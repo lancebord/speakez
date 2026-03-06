@@ -1,0 +1,268 @@
+use std::io;
+use std::time::Duration;
+
+use crossterm::{
+    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
+    execute,
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
+};
+use ratatui::{Terminal, backend::CrosstermBackend};
+
+use irc_client::client::event::Event as IrcEvent;
+use irc_client::client::{Client, Config};
+use irc_client::proto::message::{Command, IrcMessage};
+use tui::app::{AppState, CHANNEL};
+use tui::ui;
+mod tui;
+
+const NICK: &str = "";
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // ── Terminal setup ────────────────────────────────────────────────────
+    enable_raw_mode()?;
+    let mut stdout = io::stdout();
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+    let backend = CrosstermBackend::new(stdout);
+    let mut terminal = Terminal::new(backend)?;
+    terminal.clear()?;
+
+    let result = run(&mut terminal).await;
+
+    // ── Restore terminal ──────────────────────────────────────────────────
+    disable_raw_mode()?;
+    execute!(
+        terminal.backend_mut(),
+        LeaveAlternateScreen,
+        DisableMouseCapture,
+    )?;
+    terminal.show_cursor()?;
+
+    result
+}
+
+async fn run(
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut app = AppState::new(NICK, CHANNEL);
+
+    // ── Connect to IRC ────────────────────────────────────────────────────
+    let config = Config {
+        server: "irc.libera.chat:6667".to_string(),
+        nick: NICK.to_string(),
+        user: "speakez".to_string(),
+        realname: "speakez".to_string(),
+        password: None,
+        autojoin: vec![CHANNEL.to_string()],
+    };
+
+    let mut client = Client::connect(config).await?;
+
+    // ── Main event loop ───────────────────────────────────────────────────
+    // We poll both IRC events and keyboard events with short timeouts so
+    // neither blocks the other.
+    loop {
+        // Draw
+        terminal.draw(|f| ui::draw(f, &app))?;
+
+        // Poll crossterm for keyboard input (non-blocking, 20ms timeout)
+        if event::poll(Duration::from_millis(20))? {
+            if let Event::Key(key) = event::read()? {
+                match (key.modifiers, key.code) {
+                    // Quit
+                    (KeyModifiers::CONTROL, KeyCode::Char('c')) => break,
+
+                    // Send message / command
+                    (_, KeyCode::Enter) => {
+                        let text = app.take_input();
+                        if !text.is_empty() {
+                            handle_input(&text, &mut app, &mut client);
+                        }
+                    }
+
+                    // Typing
+                    (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char(c)) => {
+                        app.input_insert(c);
+                    }
+                    (_, KeyCode::Backspace) => app.input_backspace(),
+                    (_, KeyCode::Left) => app.cursor_left(),
+                    (_, KeyCode::Right) => app.cursor_right(),
+                    (_, KeyCode::Home) => app.cursor = 0,
+                    (_, KeyCode::End) => app.cursor = app.input.len(),
+
+                    // Scroll
+                    (_, KeyCode::PageUp) => app.scroll = app.scroll.saturating_add(5),
+                    (_, KeyCode::PageDown) => app.scroll = app.scroll.saturating_sub(5),
+
+                    _ => {}
+                }
+            }
+        }
+
+        // Drain IRC events (non-blocking — try_recv drains without waiting)
+        // We use a small loop to process a burst without starving the UI
+        for _ in 0..16 {
+            match client.next_event_nowait() {
+                Some(irc_event) => handle_irc_event(irc_event, &mut app),
+                None => break,
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Handle a line entered in the input box.
+fn handle_input(text: &str, app: &mut AppState, client: &mut Client) {
+    if let Some(cmd) = text.strip_prefix('/') {
+        // It's a command
+        let mut parts = cmd.splitn(2, ' ');
+        let verb = parts.next().unwrap_or("").to_uppercase();
+        let args = parts.next().unwrap_or("");
+
+        match verb.as_str() {
+            "JOIN" => {
+                client.join(args.trim());
+            }
+            "PART" => {
+                let channel = if args.is_empty() {
+                    &app.channel
+                } else {
+                    args.trim()
+                };
+                client.part(channel, None);
+            }
+            "NICK" => {
+                client.nick(args.trim());
+            }
+            "QUIT" => {
+                client.send(IrcMessage::new(Command::Quit, vec![args.to_string()]));
+            }
+            "ME" => {
+                // CTCP ACTION
+                let ctcp = format!("\x01ACTION {}\x01", args);
+                client.privmsg(&app.channel, &ctcp);
+                app.push_system(&format!("* {} {}", app.nick, args));
+            }
+            "MSG" => {
+                let mut p = args.splitn(2, ' ');
+                if let (Some(target), Some(msg)) = (p.next(), p.next()) {
+                    client.privmsg(target, msg);
+                    app.push_system(&format!("→ {}: {}", target, msg));
+                }
+            }
+            other => {
+                app.push_system(&format!("Unknown command: /{}", other));
+            }
+        }
+    } else {
+        // Regular chat message to active channel
+        client.privmsg(&app.channel, text);
+        app.push_message(&app.nick.clone(), text, true);
+    }
+}
+
+/// Apply an IRC event to the app state.
+fn handle_irc_event(event: IrcEvent, app: &mut AppState) {
+    match event {
+        IrcEvent::Connected { server, nick } => {
+            app.nick = nick.clone();
+            app.connected = true;
+            app.status = format!("connected to {}", server);
+            app.push_system(&format!("Connected to {} as {}", server, nick));
+        }
+
+        IrcEvent::Joined { channel } => {
+            app.push_system(&format!("You joined {}", channel));
+        }
+
+        IrcEvent::Message {
+            from,
+            target,
+            text,
+            is_notice: _,
+        } => {
+            // Only show messages for our active channel (or PMs to us)
+            let is_self = from == app.nick;
+            if !is_self {
+                // Don't re-echo our own messages (we already pushed them in handle_input)
+                if target == app.channel || target == app.nick {
+                    app.push_message(&from, &text, false);
+                }
+            }
+        }
+
+        IrcEvent::Parted {
+            channel,
+            nick,
+            reason,
+        } => {
+            app.members.retain(|m| {
+                let bare = m.trim_start_matches(&['@', '+', '%'][..]);
+                bare != nick
+            });
+            app.push_system(&format!(
+                "{} left {}{}",
+                nick,
+                channel,
+                reason.map(|r| format!(" ({})", r)).unwrap_or_default()
+            ));
+        }
+
+        IrcEvent::Quit { nick, reason } => {
+            app.members.retain(|m| {
+                let bare = m.trim_start_matches(&['@', '+', '%'][..]);
+                bare != nick
+            });
+            app.push_system(&format!(
+                "{} quit{}",
+                nick,
+                reason.map(|r| format!(" ({})", r)).unwrap_or_default()
+            ));
+        }
+
+        IrcEvent::NickChanged { old_nick, new_nick } => {
+            for m in &mut app.members {
+                let bare = m.trim_start_matches(&['@', '+', '%'][..]).to_string();
+                if bare == old_nick {
+                    let sigil: String = m.chars().take_while(|c| "@+%~&".contains(*c)).collect();
+                    *m = format!("{}{}", sigil, new_nick);
+                    break;
+                }
+            }
+            if old_nick == app.nick {
+                app.nick = new_nick.clone();
+            }
+            app.push_system(&format!("{} is now {}", old_nick, new_nick));
+        }
+
+        IrcEvent::Topic { channel, topic } => {
+            app.status = format!("{}: {}", channel, topic);
+            app.push_system(&format!("Topic: {}", topic));
+        }
+
+        IrcEvent::Names {
+            channel: _,
+            members,
+        } => {
+            for m in members {
+                if !app
+                    .members
+                    .iter()
+                    .any(|existing| existing.trim_start_matches(&['@', '+', '%'][..]) == m)
+                {
+                    app.members.push(m);
+                }
+            }
+            app.sort_members();
+        }
+
+        IrcEvent::Disconnected => {
+            app.connected = false;
+            app.status = "disconnected".to_string();
+            app.push_system("--- Disconnected ---");
+        }
+
+        IrcEvent::Raw(_) => {}
+    }
+}
