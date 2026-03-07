@@ -90,25 +90,10 @@ fn draw_center(f: &mut Frame, area: Rect, state: &AppState) {
 }
 
 fn draw_chat_log(f: &mut Frame, area: Rect, state: &AppState) {
-    let inner_height = area.height.saturating_sub(2) as usize; // subtract borders
-
-    // Build all rendered lines first so we can scroll from the bottom
     let lines: Vec<Line> = state
         .messages
         .iter()
         .map(|msg| render_chat_line(msg))
-        .collect();
-
-    // Apply scroll offset
-    // scroll=0 means pinned to bottom (newest). scroll=N means N lines back from bottom.
-    let total = lines.len();
-    let max_scroll = total.saturating_sub(inner_height);
-    let scroll = state.scroll.min(max_scroll);
-    let visible_start = total.saturating_sub(inner_height + scroll);
-    let visible: Vec<Line> = lines
-        .into_iter()
-        .skip(visible_start)
-        .take(inner_height)
         .collect();
 
     let block = Block::default()
@@ -117,10 +102,13 @@ fn draw_chat_log(f: &mut Frame, area: Rect, state: &AppState) {
         .border_style(Style::default().fg(ORANGE))
         .style(Style::default().bg(BG));
 
+    let inner_height = area.height.saturating_sub(2) as usize;
+    let scroll = lines.len().saturating_sub(inner_height);
     f.render_widget(
-        Paragraph::new(Text::from(visible))
+        Paragraph::new(Text::from(lines))
             .block(block)
-            .wrap(Wrap { trim: false }),
+            .wrap(Wrap { trim: false })
+            .scroll((scroll as u16, 0)),
         area,
     );
 }
@@ -232,7 +220,7 @@ fn draw_statusbar(f: &mut Frame, area: Rect, state: &AppState) {
         Span::styled("  │  ", Style::default().fg(FG)),
         Span::styled(&state.status, Style::default().fg(FG)),
         Span::styled("  │  ", Style::default().fg(FG)),
-        Span::styled("PgUp/Dn scroll  Ctrl-C quit", Style::default().fg(FG)),
+        Span::styled("Ctrl-C quit", Style::default().fg(FG)),
     ]);
 
     f.render_widget(Paragraph::new(line).style(Style::default()), area);

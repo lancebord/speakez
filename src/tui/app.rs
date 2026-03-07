@@ -1,6 +1,3 @@
-/// Compile-time channel to join on startup
-pub const CHANNEL: &str = "#speakez";
-
 /// A single chat message in the log
 #[derive(Clone)]
 pub struct ChatLine {
@@ -28,8 +25,6 @@ pub struct AppState {
     pub input: String,
     /// Cursor position within `input` (byte index)
     pub cursor: usize,
-    /// Scroll offset from the bottom (0 = pinned to latest)
-    pub scroll: usize,
     /// Status line text (connection state, errors, etc.)
     pub status: String,
     /// Whether we've fully registered
@@ -37,16 +32,15 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(nick: impl Into<String>, channel: impl Into<String>) -> Self {
+    pub fn new() -> Self {
         Self {
-            nick: nick.into(),
-            channel: channel.into(),
+            nick: String::new(),
+            channel: String::new(),
             messages: Vec::new(),
             members: Vec::new(),
             input: String::new(),
             cursor: 0,
-            scroll: 0,
-            status: "Connecting...".into(),
+            status: "Set nick with /nick to connect.".into(),
             connected: false,
         }
     }

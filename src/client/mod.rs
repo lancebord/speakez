@@ -1,5 +1,4 @@
 use tokio::sync::mpsc;
-use tracing::info;
 
 use crate::client::event::Event;
 use crate::client::handler::handle;
@@ -23,8 +22,6 @@ pub struct Config {
     pub realname: String,
     /// Optional server password
     pub password: Option<String>,
-    /// Channels to auto-join after registration
-    pub autojoin: Vec<String>,
 }
 
 /// The main IRC client.
@@ -100,16 +97,6 @@ impl Client {
             let msg = self.inbox.recv().await?;
             let events = handle(msg, &mut self.state, &self.sender);
 
-            // Handle auto-join after registration
-            for event in &events {
-                if let Event::Connected { .. } = event {
-                    for channel in &self.config.autojoin.clone() {
-                        info!("Auto-joining {}", channel);
-                        self.join(channel);
-                    }
-                }
-            }
-
             // Return the first event; re-queue the rest
             // (simple approach: process one at a time via recursive buffering)
             if let Some(first) = events.into_iter().next() {
@@ -159,14 +146,6 @@ impl Client {
         loop {
             let msg = self.inbox.try_recv().ok()?;
             let mut events = handle(msg, &mut self.state, &self.sender);
-
-            for event in &events {
-                if let Event::Connected { .. } = event {
-                    for channel in &self.config.autojoin.clone() {
-                        self.join(channel);
-                    }
-                }
-            }
 
             if !events.is_empty() {
                 return Some(events.remove(0));

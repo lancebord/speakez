@@ -14,7 +14,7 @@ pub enum Event {
     },
 
     /// We joined a channel
-    Joined { channel: String },
+    Joined { channel: String, nick: String },
 
     /// We or someone else left a channel
     Parted {

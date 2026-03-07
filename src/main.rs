@@ -11,15 +11,12 @@ use ratatui::{Terminal, backend::CrosstermBackend};
 use irc_client::client::event::Event as IrcEvent;
 use irc_client::client::{Client, Config};
 use irc_client::proto::message::{Command, IrcMessage};
-use tui::app::{AppState, CHANNEL};
+use tui::app::AppState;
 use tui::ui;
 mod tui;
 
-const NICK: &str = "";
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // ── Terminal setup ────────────────────────────────────────────────────
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
@@ -29,7 +26,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let result = run(&mut terminal).await;
 
-    // ── Restore terminal ──────────────────────────────────────────────────
     disable_raw_mode()?;
     execute!(
         terminal.backend_mut(),
@@ -44,16 +40,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 async fn run(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let mut app = AppState::new(NICK, CHANNEL);
+    let mut app = AppState::new();
 
-    // ── Connect to IRC ────────────────────────────────────────────────────
+    // Connect to IRC
     let config = Config {
         server: "irc.libera.chat:6667".to_string(),
-        nick: NICK.to_string(),
+        nick: "".to_string(),
         user: "speakez".to_string(),
         realname: "speakez".to_string(),
         password: None,
-        autojoin: vec![CHANNEL.to_string()],
     };
 
     let mut client = Client::connect(config).await?;
@@ -76,7 +71,9 @@ async fn run(
                     (_, KeyCode::Enter) => {
                         let text = app.take_input();
                         if !text.is_empty() {
-                            handle_input(&text, &mut app, &mut client);
+                            if handle_input(&text, &mut app, &mut client) {
+                                break;
+                            };
                         }
                     }
 
@@ -89,11 +86,6 @@ async fn run(
                     (_, KeyCode::Right) => app.cursor_right(),
                     (_, KeyCode::Home) => app.cursor = 0,
                     (_, KeyCode::End) => app.cursor = app.input.len(),
-
-                    // Scroll
-                    (_, KeyCode::PageUp) => app.scroll = app.scroll.saturating_add(5),
-                    (_, KeyCode::PageDown) => app.scroll = app.scroll.saturating_sub(5),
-
                     _ => {}
                 }
             }
@@ -113,7 +105,7 @@ async fn run(
 }
 
 /// Handle a line entered in the input box.
-fn handle_input(text: &str, app: &mut AppState, client: &mut Client) {
+fn handle_input(text: &str, app: &mut AppState, client: &mut Client) -> bool {
     if let Some(cmd) = text.strip_prefix('/') {
         // It's a command
         let mut parts = cmd.splitn(2, ' ');
@@ -123,6 +115,7 @@ fn handle_input(text: &str, app: &mut AppState, client: &mut Client) {
         match verb.as_str() {
             "JOIN" => {
                 client.join(args.trim());
+                app.channel = args.trim().to_string();
             }
             "PART" => {
                 let channel = if args.is_empty() {
@@ -131,12 +124,14 @@ fn handle_input(text: &str, app: &mut AppState, client: &mut Client) {
                     args.trim()
                 };
                 client.part(channel, None);
+                app.channel = "".to_string();
             }
             "NICK" => {
                 client.nick(args.trim());
             }
             "QUIT" => {
                 client.send(IrcMessage::new(Command::Quit, vec![args.to_string()]));
+                return true;
             }
             "ME" => {
                 // CTCP ACTION
@@ -156,10 +151,13 @@ fn handle_input(text: &str, app: &mut AppState, client: &mut Client) {
             }
         }
     } else {
-        // Regular chat message to active channel
-        client.privmsg(&app.channel, text);
-        app.push_message(&app.nick.clone(), text, true);
+        if app.connected && !app.channel.is_empty() {
+            // Regular chat message to active channel
+            client.privmsg(&app.channel, text);
+            app.push_message(&app.nick.clone(), text, true);
+        }
     }
+    false
 }
 
 /// Apply an IRC event to the app state.
@@ -172,8 +170,14 @@ fn handle_irc_event(event: IrcEvent, app: &mut AppState) {
             app.push_system(&format!("Connected to {} as {}", server, nick));
         }
 
-        IrcEvent::Joined { channel } => {
-            app.push_system(&format!("You joined {}", channel));
+        IrcEvent::Joined { channel, nick } => {
+            if nick == app.nick {
+                app.push_system(&format!("You joined {}", channel));
+            } else {
+                app.push_system(&format!("{} joined {}", nick, channel));
+                app.members.push(nick);
+                app.sort_members();
+            }
         }
 
         IrcEvent::Message {

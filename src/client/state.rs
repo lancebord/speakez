@@ -1,10 +1,10 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 /// The full state of a connected IRC client.
 #[derive(Debug, Default)]
 pub struct ClientState {
     pub nick: String,
-    pub channels: HashMap<String, Channel>,
+    pub channel: Channel,
     pub caps: HashSet<String>,
     pub server_name: Option<String>,
     pub reg: RegistrationState,
@@ -16,20 +16,6 @@ impl ClientState {
             nick: nick.into(),
             ..Default::default()
         }
-    }
-
-    pub fn channel(&self, name: &str) -> Option<&Channel> {
-        self.channels.get(&name.to_lowercase())
-    }
-
-    pub fn channel_mut(&mut self, name: &str) -> &mut Channel {
-        self.channels
-            .entry(name.to_lowercase())
-            .or_insert_with(|| Channel::new(name))
-    }
-
-    pub fn remove_channel(&mut self, name: &str) {
-        self.channels.remove(&name.to_lowercase());
     }
 }
 
@@ -44,7 +30,7 @@ pub enum RegistrationState {
 }
 
 /// A joined channel and its current state.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Channel {
     pub name: String,
     pub members: HashSet<String>,

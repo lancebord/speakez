@@ -61,8 +61,7 @@ pub fn handle(msg: IrcMessage, state: &mut ClientState, sender: &Sender) -> Vec<
                     })
                     .collect();
 
-                let ch = state.channel_mut(channel);
-                ch.members.extend(members.clone());
+                state.channel.members.extend(members.clone());
 
                 events.push(Event::Names {
                     channel: channel.clone(),
@@ -74,7 +73,7 @@ pub fn handle(msg: IrcMessage, state: &mut ClientState, sender: &Sender) -> Vec<
         // --- 332: topic on join ---
         Command::Numeric(332) => {
             if let (Some(channel), Some(topic)) = (msg.params.get(1), msg.params.get(2)) {
-                state.channel_mut(channel).topic = Some(topic.clone());
+                state.channel.topic = Some(topic.clone());
                 events.push(Event::Topic {
                     channel: channel.clone(),
                     topic: topic.clone(),
@@ -86,15 +85,12 @@ pub fn handle(msg: IrcMessage, state: &mut ClientState, sender: &Sender) -> Vec<
         Command::Join => {
             let nick = nick_from_prefix(&msg.prefix);
             if let Some(channel) = msg.params.first() {
-                if nick == state.nick {
-                    // We joined
-                    state.channel_mut(channel);
-                    events.push(Event::Joined {
-                        channel: channel.clone(),
-                    });
-                } else {
-                    // Someone else joined
-                    state.channel_mut(channel).members.insert(nick);
+                events.push(Event::Joined {
+                    channel: channel.clone(),
+                    nick: nick.clone(),
+                });
+                if nick != state.nick {
+                    state.channel.members.insert(nick);
                 }
             }
         }
@@ -105,10 +101,8 @@ pub fn handle(msg: IrcMessage, state: &mut ClientState, sender: &Sender) -> Vec<
             let channel = msg.params.first().cloned().unwrap_or_default();
             let reason = msg.params.get(1).cloned();
 
-            if nick == state.nick {
-                state.remove_channel(&channel);
-            } else {
-                state.channel_mut(&channel).members.remove(&nick);
+            if nick != state.nick {
+                state.channel.members.remove(&nick);
             }
 
             events.push(Event::Parted {
@@ -123,10 +117,7 @@ pub fn handle(msg: IrcMessage, state: &mut ClientState, sender: &Sender) -> Vec<
             let nick = nick_from_prefix(&msg.prefix);
             let reason = msg.params.first().cloned();
 
-            // Remove them from all channels
-            for ch in state.channels.values_mut() {
-                ch.members.remove(&nick);
-            }
+            state.channel.members.remove(&nick);
 
             events.push(Event::Quit { nick, reason });
         }
@@ -141,10 +132,8 @@ pub fn handle(msg: IrcMessage, state: &mut ClientState, sender: &Sender) -> Vec<
             }
 
             // Update in all channels
-            for ch in state.channels.values_mut() {
-                if ch.members.remove(&old_nick) {
-                    ch.members.insert(new_nick.clone());
-                }
+            if state.channel.members.remove(&old_nick) {
+                state.channel.members.insert(new_nick.clone());
             }
 
             events.push(Event::NickChanged { old_nick, new_nick });
@@ -168,7 +157,7 @@ pub fn handle(msg: IrcMessage, state: &mut ClientState, sender: &Sender) -> Vec<
         // --- TOPIC (live change) ---
         Command::Topic => {
             if let (Some(channel), Some(topic)) = (msg.params.first(), msg.params.get(1)) {
-                state.channel_mut(channel).topic = Some(topic.clone());
+                state.channel.topic = Some(topic.clone());
                 events.push(Event::Topic {
                     channel: channel.clone(),
                     topic: topic.clone(),
