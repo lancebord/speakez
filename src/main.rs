@@ -1,12 +1,13 @@
-use std::io;
-use std::time::Duration;
-
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use ratatui::{Terminal, backend::CrosstermBackend};
+use std::env;
+use std::io;
+use std::net::ToSocketAddrs;
+use std::time::Duration;
 
 use irc_client::client::event::Event as IrcEvent;
 use irc_client::client::{Client, Config};
@@ -42,9 +43,20 @@ async fn run(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut app = AppState::new();
 
+    let server = match env::args().nth(1) {
+        Some(s) => s,
+        None => {
+            return Err("Usage: speakez <server:port>".into());
+        }
+    };
+
+    if server.to_socket_addrs().is_err() {
+        return Err("Error: could not resolve server".into());
+    }
+
     // Connect to IRC
     let config = Config {
-        server: "irc.libera.chat:6667".to_string(),
+        server,
         nick: "".to_string(),
         user: "speakez".to_string(),
         realname: "speakez".to_string(),
