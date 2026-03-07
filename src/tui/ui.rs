@@ -1,3 +1,4 @@
+use super::app::AppState;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
@@ -5,8 +6,7 @@ use ratatui::{
     text::{Line, Span, Text},
     widgets::{Block, BorderType, Borders, List, ListItem, Paragraph, Wrap},
 };
-
-use super::app::AppState;
+use unicode_width::UnicodeWidthStr;
 
 // ── Colour palette ────────────────────────────────────────────────────────────
 // Dark terminal aesthetic: near-black background, cool grey chrome,
@@ -102,8 +102,11 @@ fn draw_chat_log(f: &mut Frame, area: Rect, state: &AppState) {
         .border_style(Style::default().fg(ORANGE))
         .style(Style::default().bg(BG));
 
+    let inner_width = area.width.saturating_sub(2) as usize;
     let inner_height = area.height.saturating_sub(2) as usize;
-    let scroll = lines.len().saturating_sub(inner_height);
+
+    let total_wrapped = count_wrapped_lines(&lines, inner_width);
+    let scroll = total_wrapped.saturating_sub(inner_height);
     f.render_widget(
         Paragraph::new(Text::from(lines))
             .block(block)
@@ -111,6 +114,40 @@ fn draw_chat_log(f: &mut Frame, area: Rect, state: &AppState) {
             .scroll((scroll as u16, 0)),
         area,
     );
+}
+
+fn count_wrapped_lines(lines: &[Line], width: usize) -> usize {
+    if width == 0 {
+        return lines.len();
+    }
+    lines
+        .iter()
+        .map(|line| {
+            let full_text: String = line
+                .spans
+                .iter()
+                .map(|span| span.content.as_ref())
+                .collect();
+
+            if full_text.is_empty() {
+                return 1;
+            }
+
+            let mut row_count = 1;
+            let mut current_width = 0;
+
+            for word in full_text.split_inclusive(' ') {
+                let word_width = UnicodeWidthStr::width(word);
+                if current_width + word_width > width {
+                    row_count += 1;
+                    current_width = word_width;
+                } else {
+                    current_width += word_width;
+                }
+            }
+            row_count
+        })
+        .sum()
 }
 
 fn render_chat_line(msg: &super::app::ChatLine) -> Line<'static> {
