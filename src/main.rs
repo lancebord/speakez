@@ -126,6 +126,9 @@ fn handle_input(text: &str, app: &mut AppState, client: &mut Client) -> bool {
 
         match verb.as_str() {
             "JOIN" => {
+                if !app.channel.is_empty() {
+                    client.part(&app.channel, None);
+                }
                 client.join(args.trim());
                 app.channel = args.trim().to_string();
             }
