@@ -10,6 +10,10 @@
 
 # SpeakEZ
 
+<p align="center">
+  <img width="512" height=auto src="screen.jpg">
+</p>
+
 SpeakEZ is an open-source IRC client in your terminal written in Rust with the Ratatui crate for visuals. SpeakEZ is a minimal client that implements just enough protocol from scratch to support single channel chatting and private messages. No extra config files, tiling, tabs, splits, or menus. SpeakEZ is focused on being performant and simple.
 
 ---
