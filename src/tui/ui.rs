@@ -147,7 +147,7 @@ fn count_wrapped_lines(lines: &[Line], width: usize) -> usize {
 
             for word in full_text.split_inclusive(' ') {
                 let word_width = UnicodeWidthStr::width(word);
-                if current_width + word_width > width {
+                if current_width > 0 && current_width + word_width > width {
                     row_count += 1;
                     current_width = word_width;
                 } else {
