@@ -12,18 +12,16 @@ pub fn handle(msg: IrcMessage, state: &mut ClientState, sender: &Sender) -> Vec<
     let mut events = Vec::new();
 
     match &msg.command {
-        // --- PING: must reply immediately or the server drops us ---
         Command::Ping => {
             let token = msg.params.first().cloned().unwrap_or_default();
             sender.send(IrcMessage::new(Command::Pong, vec![token]));
         }
 
-        // --- CAP: capability negotiation ---
         Command::Cap => {
             handle_cap(&msg, state, sender);
         }
 
-        // --- 001: welcome — registration complete ---
+        // 001: welcome
         Command::Numeric(1) => {
             let server = msg
                 .prefix
@@ -48,7 +46,7 @@ pub fn handle(msg: IrcMessage, state: &mut ClientState, sender: &Sender) -> Vec<
             });
         }
 
-        // --- 353: NAMES reply (list of members in a channel) ---
+        // 353: NAMES
         Command::Numeric(353) => {
             // params: [our_nick, ("=" / "*" / "@"), channel, ":member1 member2 ..."]
             if let (Some(channel), Some(members_str)) = (msg.params.get(2), msg.params.get(3)) {
@@ -70,7 +68,7 @@ pub fn handle(msg: IrcMessage, state: &mut ClientState, sender: &Sender) -> Vec<
             }
         }
 
-        // --- 332: topic on join ---
+        // 332: topic on join
         Command::Numeric(332) => {
             if let (Some(channel), Some(topic)) = (msg.params.get(1), msg.params.get(2)) {
                 state.channel.topic = Some(topic.clone());
@@ -81,7 +79,6 @@ pub fn handle(msg: IrcMessage, state: &mut ClientState, sender: &Sender) -> Vec<
             }
         }
 
-        // --- JOIN ---
         Command::Join => {
             let nick = nick_from_prefix(&msg.prefix);
             if let Some(channel) = msg.params.first() {
@@ -95,7 +92,6 @@ pub fn handle(msg: IrcMessage, state: &mut ClientState, sender: &Sender) -> Vec<
             }
         }
 
-        // --- PART ---
         Command::Part => {
             let nick = nick_from_prefix(&msg.prefix);
             let channel = msg.params.first().cloned().unwrap_or_default();
@@ -112,7 +108,6 @@ pub fn handle(msg: IrcMessage, state: &mut ClientState, sender: &Sender) -> Vec<
             });
         }
 
-        // --- QUIT ---
         Command::Quit => {
             let nick = nick_from_prefix(&msg.prefix);
             let reason = msg.params.first().cloned();
@@ -122,7 +117,6 @@ pub fn handle(msg: IrcMessage, state: &mut ClientState, sender: &Sender) -> Vec<
             events.push(Event::Quit { nick, reason });
         }
 
-        // --- NICK ---
         Command::Nick => {
             let old_nick = nick_from_prefix(&msg.prefix);
             let new_nick = msg.params.first().cloned().unwrap_or_default();
@@ -139,7 +133,6 @@ pub fn handle(msg: IrcMessage, state: &mut ClientState, sender: &Sender) -> Vec<
             events.push(Event::NickChanged { old_nick, new_nick });
         }
 
-        // --- PRIVMSG / NOTICE ---
         Command::Privmsg | Command::Notice => {
             let from = nick_from_prefix(&msg.prefix);
             let target = msg.params.first().cloned().unwrap_or_default();
@@ -154,7 +147,6 @@ pub fn handle(msg: IrcMessage, state: &mut ClientState, sender: &Sender) -> Vec<
             });
         }
 
-        // --- TOPIC (live change) ---
         Command::Topic => {
             if let (Some(channel), Some(topic)) = (msg.params.first(), msg.params.get(1)) {
                 state.channel.topic = Some(topic.clone());
@@ -165,7 +157,6 @@ pub fn handle(msg: IrcMessage, state: &mut ClientState, sender: &Sender) -> Vec<
             }
         }
 
-        // --- Everything else: surface as Raw ---
         _ => {
             debug!("Unhandled: {}", serialize(&msg));
             events.push(Event::Raw(msg));
@@ -206,7 +197,6 @@ fn handle_cap(msg: &IrcMessage, state: &mut ClientState, sender: &Sender) {
         }
 
         "ACK" => {
-            // Server acknowledged our capability requests
             if let Some(caps) = msg.params.last() {
                 for cap in caps.split_whitespace() {
                     state.caps.insert(cap.to_string());
@@ -217,7 +207,6 @@ fn handle_cap(msg: &IrcMessage, state: &mut ClientState, sender: &Sender) {
         }
 
         "NAK" => {
-            // Server rejected our request — just end negotiation
             warn!("CAP NAK: {:?}", msg.params.last());
             sender.send(IrcMessage::new(Command::Cap, vec!["END".into()]));
             state.reg = RegistrationState::WaitingForWelcome;

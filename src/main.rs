@@ -170,7 +170,7 @@ fn handle_input(text: &str, app: &mut AppState, client: &mut Client) -> bool {
                 let mut p = args.splitn(2, ' ');
                 if let (Some(target), Some(msg)) = (p.next(), p.next()) {
                     client.privmsg(target, msg);
-                    app.push_system(&format!("→ {}: {}", target, msg));
+                    app.push_message(&format!("You →  {target}:"), &msg);
                 }
             }
             other => {
@@ -217,8 +217,10 @@ fn handle_irc_event(event: IrcEvent, app: &mut AppState) {
             let is_self = from == app.nick;
             if !is_self {
                 // Don't re-echo our own messages (we already pushed them in handle_input)
-                if target == app.channel || target == app.nick {
+                if target == app.channel {
                     app.push_message(&from, &text);
+                } else if target == app.nick {
+                    app.push_message(&format!("{from} →  You:"), &text);
                 }
             }
         }
