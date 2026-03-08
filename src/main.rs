@@ -1,10 +1,10 @@
+use clap::Parser;
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use ratatui::{Terminal, backend::CrosstermBackend};
-use std::env;
 use std::io;
 use std::net::ToSocketAddrs;
 use std::time::Duration;
@@ -15,6 +15,25 @@ use irc_client::proto::message::{Command, IrcMessage};
 use tui::app::AppState;
 use tui::ui;
 mod tui;
+
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None)]
+struct Args {
+    #[arg(short, long)]
+    server: String,
+
+    #[arg(short, long, default_value_t = String::new())]
+    nick: String,
+
+    #[arg(short, long, default_value_t = String::from("speakez"))]
+    user: String,
+
+    #[arg(short, long, default_value_t = String::from("speakez"))]
+    realname: String,
+
+    #[arg(short, long, default_value_t = String::new())]
+    pass: String,
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -43,43 +62,37 @@ async fn run(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut app = AppState::new();
 
-    let server = match env::args().nth(1) {
-        Some(s) => s,
-        None => {
-            return Err("Usage: speakez <server:port>".into());
-        }
-    };
-
-    if server.to_socket_addrs().is_err() {
+    let args = Args::try_parse()?;
+    if args.server.to_socket_addrs().is_err() {
         return Err("Error: could not resolve server".into());
     }
 
+    let password = match args.pass.as_str() {
+        "" => None,
+        _ => Some(args.pass),
+    };
+
     // Connect to IRC
     let config = Config {
-        server,
-        nick: "".to_string(),
-        user: "speakez".to_string(),
-        realname: "speakez".to_string(),
-        password: None,
+        server: args.server,
+        nick: args.nick,
+        user: args.user,
+        realname: args.realname,
+        password,
     };
 
     let mut client = Client::connect(config).await?;
 
-    // ── Main event loop ───────────────────────────────────────────────────
     // We poll both IRC events and keyboard events with short timeouts so
     // neither blocks the other.
     loop {
-        // Draw
         terminal.draw(|f| ui::draw(f, &mut app))?;
 
-        // Poll crossterm for keyboard input (non-blocking, 20ms timeout)
         if event::poll(Duration::from_millis(20))? {
             if let Event::Key(key) = event::read()? {
                 match (key.modifiers, key.code) {
-                    // Quit
                     (KeyModifiers::CONTROL, KeyCode::Char('c')) => break,
 
-                    // Send message / command
                     (_, KeyCode::Enter) => {
                         let text = app.take_input();
                         if !text.is_empty() {
@@ -89,7 +102,6 @@ async fn run(
                         }
                     }
 
-                    // Typing
                     (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char(c)) => {
                         app.input_insert(c);
                     }
@@ -105,8 +117,6 @@ async fn run(
             }
         }
 
-        // Drain IRC events (non-blocking — try_recv drains without waiting)
-        // We use a small loop to process a burst without starving the UI
         for _ in 0..16 {
             match client.next_event_nowait() {
                 Some(irc_event) => handle_irc_event(irc_event, &mut app),
