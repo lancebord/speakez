@@ -13,6 +13,9 @@ pub enum Event {
         is_notice: bool,
     },
 
+    /// A system message like MOTD
+    SysMessage { text: String },
+
     /// We joined a channel
     Joined { channel: String, nick: String },
 

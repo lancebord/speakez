@@ -79,6 +79,15 @@ pub fn handle(msg: IrcMessage, state: &mut ClientState, sender: &Sender) -> Vec<
             }
         }
 
+        // MOTD commands
+        Command::Numeric(375) | Command::Numeric(376) | Command::Numeric(372) => {
+            if let Some(message) = msg.params.get(1) {
+                events.push(Event::SysMessage {
+                    text: message.clone(),
+                });
+            }
+        }
+
         Command::Join => {
             let nick = nick_from_prefix(&msg.prefix);
             if let Some(channel) = msg.params.first() {

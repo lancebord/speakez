@@ -226,6 +226,10 @@ fn handle_irc_event(event: IrcEvent, app: &mut AppState) {
             }
         }
 
+        IrcEvent::SysMessage { text } => {
+            app.push_system(text.as_str());
+        }
+
         IrcEvent::Parted {
             channel,
             nick,
