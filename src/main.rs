@@ -22,7 +22,7 @@ struct Args {
     #[arg(short, long)]
     server: String,
 
-    #[arg(short, long, default_value_t = String::new())]
+    #[arg(short, long)]
     nick: String,
 
     #[arg(short, long, default_value_t = String::from("speakez"))]
