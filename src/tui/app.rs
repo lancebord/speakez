@@ -3,31 +3,20 @@
 pub struct ChatLine {
     pub nick: String,
     pub text: String,
-    /// true = server/system message (JOIN, PART, topic, etc.)
     pub is_system: bool,
-    /// true = NOTICE
     pub is_notice: bool,
 }
 
-/// All mutable state the TUI needs to render and respond to input
+/// All mutable state for the TUI
 pub struct AppState {
-    /// Our nick
     pub nick: String,
-    /// The active channel name
     pub channel: String,
-    /// Chat log for the active channel
     pub messages: Vec<ChatLine>,
-    /// Member list for the active channel
     pub members: Vec<String>,
-    /// Current contents of the input box
     pub input: String,
-    /// Cursor position within `input` (byte index)
     pub cursor: usize,
-    /// Line scroll offset (byte index)
     pub scroll_offset: usize,
-    /// Status line text (connection state, errors, etc.)
     pub status: String,
-    /// Whether we've fully registered
     pub connected: bool,
 }
 
@@ -46,7 +35,6 @@ impl AppState {
         }
     }
 
-    /// Push a chat message
     pub fn push_message(&mut self, nick: &str, text: &str) {
         self.messages.push(ChatLine {
             nick: nick.to_string(),
@@ -56,7 +44,6 @@ impl AppState {
         });
     }
 
-    /// Push a system/event line (joins, parts, topic changes)
     pub fn push_system(&mut self, text: &str) {
         self.messages.push(ChatLine {
             nick: String::new(),
@@ -66,13 +53,11 @@ impl AppState {
         });
     }
 
-    /// Insert a character at the cursor
     pub fn input_insert(&mut self, ch: char) {
         self.input.insert(self.cursor, ch);
         self.cursor += ch.len_utf8();
     }
 
-    /// Delete the character before the cursor
     pub fn input_backspace(&mut self) {
         if self.cursor == 0 {
             return;
@@ -87,7 +72,6 @@ impl AppState {
         self.cursor = prev;
     }
 
-    /// Move cursor left one character
     pub fn cursor_left(&mut self) {
         self.cursor = self.input[..self.cursor]
             .char_indices()
@@ -96,7 +80,6 @@ impl AppState {
             .unwrap_or(0);
     }
 
-    /// Move cursor right one character
     pub fn cursor_right(&mut self) {
         if self.cursor < self.input.len() {
             let ch = self.input[self.cursor..].chars().next().unwrap();
@@ -104,23 +87,19 @@ impl AppState {
         }
     }
 
-    /// Scroll up one line
     pub fn scroll_up(&mut self) {
         self.scroll_offset += 1;
     }
 
-    /// Scroll down one line
     pub fn scroll_down(&mut self) {
         self.scroll_offset = self.scroll_offset.saturating_sub(1);
     }
 
-    /// Take the current input, clear the box, return the text
     pub fn take_input(&mut self) -> String {
         self.cursor = 0;
         std::mem::take(&mut self.input)
     }
 
-    /// Sort and deduplicate the member list
     pub fn sort_members(&mut self) {
         self.members.sort_by(|a, b| {
             // Strip sigils for sorting (@, +, %)
