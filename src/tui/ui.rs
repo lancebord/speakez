@@ -88,23 +88,32 @@ fn draw_chat_log(f: &mut Frame, area: Rect, state: &AppState) {
         .iter()
         .map(|msg| render_chat_line(msg))
         .collect();
-
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Plain)
         .border_style(Style::default().fg(Color::Green))
         .style(Style::default());
-
     let inner_width = area.width.saturating_sub(2) as usize;
     let inner_height = area.height.saturating_sub(2) as usize;
-
     let total_wrapped = count_wrapped_lines(&lines, inner_width);
-    let scroll = total_wrapped.saturating_sub(inner_height);
+
+    let (padded_lines, scroll) = if total_wrapped < inner_height {
+        // Pad the top with empty lines to push content to the bottom
+        let padding = inner_height - total_wrapped;
+        let mut padded = vec![Line::raw(""); padding];
+        padded.extend(lines);
+        (padded, 0u16)
+    } else {
+        // Content overflows — scroll to keep the latest lines visible
+        let scroll = total_wrapped.saturating_sub(inner_height);
+        (lines, scroll as u16)
+    };
+
     f.render_widget(
-        Paragraph::new(Text::from(lines))
+        Paragraph::new(Text::from(padded_lines))
             .block(block)
             .wrap(Wrap { trim: false })
-            .scroll((scroll as u16, 0)),
+            .scroll((scroll, 0)),
         area,
     );
 }
