@@ -12,17 +12,11 @@ use unicode_width::UnicodeWidthStr;
 // Dark terminal aesthetic: near-black background, cool grey chrome,
 // amber accent for our own nick, cyan for others, muted green for system.
 
-const BG: Color = Color::Rgb(16, 16, 16);
-const ORANGE: Color = Color::Rgb(251, 84, 43); // border / panel bg
-const FG: Color = Color::Rgb(204, 204, 204); // main foreground
-const GRAY: Color = Color::Rgb(74, 74, 74); // other nicks
-const LIGHT_ORANGE: Color = Color::Rgb(255, 122, 89); // system messages
-
 pub fn draw(f: &mut Frame, state: &AppState) {
     let area = f.area();
 
     // Fill background
-    f.render_widget(Block::default().style(Style::default().bg(BG)), area);
+    f.render_widget(Block::default().style(Style::default()), area);
 
     // ── Outer layout: title bar + body + status bar ───────────────────────
     let outer = Layout::default()
@@ -43,19 +37,18 @@ fn draw_titlebar(f: &mut Frame, area: Rect, state: &AppState) {
     let title = Line::from(vec![
         Span::styled(
             "   ",
-            Style::default().fg(ORANGE).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD),
         ),
-        Span::styled(
-            "speakez",
-            Style::default().fg(FG).add_modifier(Modifier::BOLD),
-        ),
-        Span::styled("  │  ", Style::default().fg(FG)),
+        Span::styled("speakez", Style::default().add_modifier(Modifier::BOLD)),
+        Span::styled("  │  ", Style::default()),
         Span::styled(
             &state.channel,
-            Style::default().fg(FG).add_modifier(Modifier::BOLD),
+            Style::default().add_modifier(Modifier::BOLD),
         ),
-        Span::styled("  │  ", Style::default().fg(FG)),
-        Span::styled(&state.nick, Style::default().fg(ORANGE)),
+        Span::styled("  │  ", Style::default()),
+        Span::styled(&state.nick, Style::default().fg(Color::Green)),
     ]);
 
     f.render_widget(Paragraph::new(title).style(Style::default()), area);
@@ -99,8 +92,8 @@ fn draw_chat_log(f: &mut Frame, area: Rect, state: &AppState) {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Plain)
-        .border_style(Style::default().fg(ORANGE))
-        .style(Style::default().bg(BG));
+        .border_style(Style::default().fg(Color::Green))
+        .style(Style::default());
 
     let inner_width = area.width.saturating_sub(2) as usize;
     let inner_height = area.height.saturating_sub(2) as usize;
@@ -155,17 +148,17 @@ fn render_chat_line(msg: &super::app::ChatLine) -> Line<'static> {
         return Line::from(Span::styled(
             format!("  ∙ {}", msg.text),
             Style::default()
-                .fg(LIGHT_ORANGE)
+                .fg(Color::DarkGray)
                 .add_modifier(Modifier::DIM),
         ));
     }
 
-    let nick_style = if msg.is_self {
-        Style::default().fg(ORANGE).add_modifier(Modifier::BOLD)
-    } else if msg.is_notice {
-        Style::default().fg(ORANGE)
+    let nick_style = if msg.is_notice {
+        Style::default().fg(Color::Green)
     } else {
-        Style::default().fg(GRAY)
+        Style::default()
+            .fg(color_from_str(&msg.nick))
+            .add_modifier(Modifier::BOLD)
     };
 
     let nick = format!("{}", msg.nick);
@@ -173,8 +166,21 @@ fn render_chat_line(msg: &super::app::ChatLine) -> Line<'static> {
     Line::from(vec![
         Span::styled(nick, nick_style),
         Span::styled("  ", Style::default()),
-        Span::styled(msg.text.clone(), Style::default().fg(FG)),
+        Span::styled(msg.text.clone(), Style::default()),
     ])
+}
+
+fn color_from_str(s: &str) -> Color {
+    let sum: u32 = s.chars().map(|c| c as u32).sum();
+    match sum % 6 {
+        0 => Color::Red,
+        1 => Color::Green,
+        2 => Color::Yellow,
+        3 => Color::Blue,
+        4 => Color::Magenta,
+        5 => Color::Cyan,
+        _ => unreachable!(),
+    }
 }
 
 fn draw_input(f: &mut Frame, area: Rect, state: &AppState) {
@@ -194,19 +200,21 @@ fn draw_input(f: &mut Frame, area: Rect, state: &AppState) {
     };
 
     let line = Line::from(vec![
-        Span::styled(before.to_string(), Style::default().fg(FG)),
+        Span::styled(before.to_string(), Style::default()),
         Span::styled(
             cursor_char.to_string(),
-            Style::default().bg(FG).fg(BG).add_modifier(Modifier::BOLD),
+            Style::default()
+                .bg(Color::White)
+                .add_modifier(Modifier::BOLD),
         ),
-        Span::styled(after_cursor.to_string(), Style::default().fg(FG)),
+        Span::styled(after_cursor.to_string(), Style::default()),
     ]);
 
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Plain)
-        .border_style(Style::default().fg(ORANGE))
-        .title(Span::styled(" send ", Style::default().fg(FG)));
+        .border_style(Style::default().fg(Color::Green))
+        .title(Span::styled(" send ", Style::default()));
 
     f.render_widget(Paragraph::new(line).block(block), area);
 }
@@ -226,14 +234,19 @@ fn draw_members_panel(f: &mut Frame, area: Rect, state: &AppState) {
             };
 
             let sigil_style = if sigil == "@" {
-                Style::default().fg(ORANGE)
+                Style::default().fg(Color::Green)
             } else {
-                Style::default().fg(FG)
+                Style::default()
             };
 
             ListItem::new(Line::from(vec![
                 Span::styled(sigil.to_string(), sigil_style),
-                Span::styled(rest.to_string(), Style::default().fg(FG)),
+                Span::styled(
+                    rest.to_string(),
+                    Style::default()
+                        .fg(color_from_str(nick.as_str()))
+                        .add_modifier(Modifier::BOLD),
+                ),
             ]))
         })
         .collect();
@@ -246,18 +259,18 @@ fn draw_members_panel(f: &mut Frame, area: Rect, state: &AppState) {
 
 fn draw_statusbar(f: &mut Frame, area: Rect, state: &AppState) {
     let (status_text, status_style) = if state.connected {
-        ("● connected", Style::default().fg(LIGHT_ORANGE))
+        ("● connected", Style::default().fg(Color::LightGreen))
     } else {
-        ("○ connecting…", Style::default().fg(GRAY))
+        ("○ connecting…", Style::default().fg(Color::Gray))
     };
 
     let line = Line::from(vec![
         Span::styled("  ", Style::default()),
         Span::styled(status_text, status_style),
-        Span::styled("  │  ", Style::default().fg(FG)),
-        Span::styled(&state.status, Style::default().fg(FG)),
-        Span::styled("  │  ", Style::default().fg(FG)),
-        Span::styled("Ctrl-C quit", Style::default().fg(FG)),
+        Span::styled("  │  ", Style::default()),
+        Span::styled(&state.status, Style::default()),
+        Span::styled("  │  ", Style::default()),
+        Span::styled("Ctrl-C quit", Style::default()),
     ]);
 
     f.render_widget(Paragraph::new(line).style(Style::default()), area);
@@ -268,10 +281,7 @@ fn panel_block(title: &str) -> Block<'static> {
     Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Plain)
-        .border_style(Style::default().fg(ORANGE))
-        .title(Span::styled(
-            format!(" {} ", title),
-            Style::default().fg(FG),
-        ))
-        .style(Style::default().bg(BG))
+        .border_style(Style::default().fg(Color::Green))
+        .title(Span::styled(format!(" {} ", title), Style::default()))
+        .style(Style::default())
 }

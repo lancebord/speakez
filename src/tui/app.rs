@@ -7,8 +7,6 @@ pub struct ChatLine {
     pub is_system: bool,
     /// true = NOTICE
     pub is_notice: bool,
-    /// true = this is our own message
-    pub is_self: bool,
 }
 
 /// All mutable state the TUI needs to render and respond to input
@@ -46,13 +44,12 @@ impl AppState {
     }
 
     /// Push a chat message
-    pub fn push_message(&mut self, nick: &str, text: &str, is_self: bool) {
+    pub fn push_message(&mut self, nick: &str, text: &str) {
         self.messages.push(ChatLine {
             nick: nick.to_string(),
             text: text.to_string(),
             is_system: false,
             is_notice: false,
-            is_self,
         });
     }
 
@@ -63,7 +60,6 @@ impl AppState {
             text: text.to_string(),
             is_system: true,
             is_notice: false,
-            is_self: false,
         });
     }
 

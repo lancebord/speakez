@@ -169,7 +169,7 @@ fn handle_input(text: &str, app: &mut AppState, client: &mut Client) -> bool {
         if app.connected && !app.channel.is_empty() {
             // Regular chat message to active channel
             client.privmsg(&app.channel, text);
-            app.push_message(&app.nick.clone(), text, true);
+            app.push_message(&app.nick.clone(), text);
         }
     }
     false
@@ -206,7 +206,7 @@ fn handle_irc_event(event: IrcEvent, app: &mut AppState) {
             if !is_self {
                 // Don't re-echo our own messages (we already pushed them in handle_input)
                 if target == app.channel || target == app.nick {
-                    app.push_message(&from, &text, false);
+                    app.push_message(&from, &text);
                 }
             }
         }
