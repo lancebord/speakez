@@ -142,6 +142,7 @@ fn handle_input(text: &str, app: &mut AppState, client: &mut Client) -> bool {
                     client.part(&app.channel, None);
                 }
                 app.messages.clear();
+                app.members.clear();
                 client.join(args.trim());
                 app.channel = args.trim().to_string();
             }
@@ -153,6 +154,7 @@ fn handle_input(text: &str, app: &mut AppState, client: &mut Client) -> bool {
                 };
                 client.part(channel, None);
                 app.channel = "".to_string();
+                app.members.clear();
             }
             "NICK" => {
                 client.nick(args.trim());
