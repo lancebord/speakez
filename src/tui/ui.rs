@@ -8,17 +8,12 @@ use ratatui::{
 };
 use unicode_width::UnicodeWidthStr;
 
-// ── Colour palette ────────────────────────────────────────────────────────────
-// Dark terminal aesthetic: near-black background, cool grey chrome,
-// amber accent for our own nick, cyan for others, muted green for system.
-
 pub fn draw(f: &mut Frame, state: &mut AppState) {
     let area = f.area();
 
     // Fill background
     f.render_widget(Block::default().style(Style::default()), area);
 
-    // ── Outer layout: title bar + body + status bar ───────────────────────
     let outer = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -69,13 +64,19 @@ fn draw_body(f: &mut Frame, area: Rect, state: &mut AppState) {
 }
 
 fn draw_center(f: &mut Frame, area: Rect, state: &mut AppState) {
-    // Centre column: chat log on top, input box on bottom
+    let inner_width = area.width.saturating_sub(2) as usize;
+
+    // Build the same Line that draw_input will render
+    let input_line = Line::from(vec![
+        Span::raw(state.input.clone()),
+        Span::raw(" "), // account for cursor character
+    ]);
+    let wrapped = count_wrapped_lines(&[input_line], inner_width);
+    let input_height = (wrapped as u16 + 2).max(3); // +2 borders, min 3
+
     let rows = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Min(0),    // chat log
-            Constraint::Length(3), // input box
-        ])
+        .constraints([Constraint::Min(0), Constraint::Length(input_height)])
         .split(area);
 
     draw_chat_log(f, rows[0], state);
@@ -229,9 +230,12 @@ fn draw_input(f: &mut Frame, area: Rect, state: &AppState) {
         .borders(Borders::ALL)
         .border_type(BorderType::Plain)
         .border_style(Style::default().fg(Color::Green))
-        .title(Span::styled(" send ", Style::default()));
+        .title(Span::styled(" message ", Style::default()));
 
-    f.render_widget(Paragraph::new(line).block(block), area);
+    f.render_widget(
+        Paragraph::new(line).block(block).wrap(Wrap { trim: false }),
+        area,
+    );
 }
 
 fn draw_members_panel(f: &mut Frame, area: Rect, state: &AppState) {
