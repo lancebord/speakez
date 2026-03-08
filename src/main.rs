@@ -70,7 +70,7 @@ async fn run(
     // neither blocks the other.
     loop {
         // Draw
-        terminal.draw(|f| ui::draw(f, &app))?;
+        terminal.draw(|f| ui::draw(f, &mut app))?;
 
         // Poll crossterm for keyboard input (non-blocking, 20ms timeout)
         if event::poll(Duration::from_millis(20))? {
@@ -96,6 +96,8 @@ async fn run(
                     (_, KeyCode::Backspace) => app.input_backspace(),
                     (_, KeyCode::Left) => app.cursor_left(),
                     (_, KeyCode::Right) => app.cursor_right(),
+                    (_, KeyCode::Up) => app.scroll_up(),
+                    (_, KeyCode::Down) => app.scroll_down(),
                     (_, KeyCode::Home) => app.cursor = 0,
                     (_, KeyCode::End) => app.cursor = app.input.len(),
                     _ => {}

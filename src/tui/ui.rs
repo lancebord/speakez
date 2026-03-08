@@ -12,7 +12,7 @@ use unicode_width::UnicodeWidthStr;
 // Dark terminal aesthetic: near-black background, cool grey chrome,
 // amber accent for our own nick, cyan for others, muted green for system.
 
-pub fn draw(f: &mut Frame, state: &AppState) {
+pub fn draw(f: &mut Frame, state: &mut AppState) {
     let area = f.area();
 
     // Fill background
@@ -54,7 +54,7 @@ fn draw_titlebar(f: &mut Frame, area: Rect, state: &AppState) {
     f.render_widget(Paragraph::new(title).style(Style::default()), area);
 }
 
-fn draw_body(f: &mut Frame, area: Rect, state: &AppState) {
+fn draw_body(f: &mut Frame, area: Rect, state: &mut AppState) {
     // Body:  [chat (fill)] | [members (18)]
     let cols = Layout::default()
         .direction(Direction::Horizontal)
@@ -68,7 +68,7 @@ fn draw_body(f: &mut Frame, area: Rect, state: &AppState) {
     draw_members_panel(f, cols[1], state);
 }
 
-fn draw_center(f: &mut Frame, area: Rect, state: &AppState) {
+fn draw_center(f: &mut Frame, area: Rect, state: &mut AppState) {
     // Centre column: chat log on top, input box on bottom
     let rows = Layout::default()
         .direction(Direction::Vertical)
@@ -82,38 +82,44 @@ fn draw_center(f: &mut Frame, area: Rect, state: &AppState) {
     draw_input(f, rows[1], state);
 }
 
-fn draw_chat_log(f: &mut Frame, area: Rect, state: &AppState) {
+fn draw_chat_log(f: &mut Frame, area: Rect, state: &mut AppState) {
     let lines: Vec<Line> = state
         .messages
         .iter()
         .map(|msg| render_chat_line(msg))
         .collect();
+
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Plain)
         .border_style(Style::default().fg(Color::Green))
         .style(Style::default());
+
     let inner_width = area.width.saturating_sub(2) as usize;
     let inner_height = area.height.saturating_sub(2) as usize;
     let total_wrapped = count_wrapped_lines(&lines, inner_width);
 
-    let (padded_lines, scroll) = if total_wrapped < inner_height {
-        // Pad the top with empty lines to push content to the bottom
+    let (padded_lines, base_scroll) = if total_wrapped < inner_height {
         let padding = inner_height - total_wrapped;
         let mut padded = vec![Line::raw(""); padding];
         padded.extend(lines);
         (padded, 0u16)
     } else {
-        // Content overflows — scroll to keep the latest lines visible
         let scroll = total_wrapped.saturating_sub(inner_height);
         (lines, scroll as u16)
     };
+    // Max scrollable lines upward from the natural bottom position
+    let max_offset = base_scroll as usize;
+
+    // Clamp the offset and write it back so app.rs stays in sync
+    state.scroll_offset = state.scroll_offset.clamp(0, max_offset);
+    let final_scroll = (base_scroll as i32 - state.scroll_offset as i32) as u16;
 
     f.render_widget(
         Paragraph::new(Text::from(padded_lines))
             .block(block)
             .wrap(Wrap { trim: false })
-            .scroll((scroll, 0)),
+            .scroll((final_scroll, 0)),
         area,
     );
 }

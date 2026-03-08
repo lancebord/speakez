@@ -23,6 +23,8 @@ pub struct AppState {
     pub input: String,
     /// Cursor position within `input` (byte index)
     pub cursor: usize,
+    /// Line scroll offset (byte index)
+    pub scroll_offset: usize,
     /// Status line text (connection state, errors, etc.)
     pub status: String,
     /// Whether we've fully registered
@@ -38,6 +40,7 @@ impl AppState {
             members: Vec::new(),
             input: String::new(),
             cursor: 0,
+            scroll_offset: 0,
             status: "Set nick with /nick to connect.".into(),
             connected: false,
         }
@@ -99,6 +102,16 @@ impl AppState {
             let ch = self.input[self.cursor..].chars().next().unwrap();
             self.cursor += ch.len_utf8();
         }
+    }
+
+    /// Scroll up one line
+    pub fn scroll_up(&mut self) {
+        self.scroll_offset += 1;
+    }
+
+    /// Scroll down one line
+    pub fn scroll_down(&mut self) {
+        self.scroll_offset = self.scroll_offset.saturating_sub(1);
     }
 
     /// Take the current input, clear the box, return the text
