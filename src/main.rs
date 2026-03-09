@@ -1,17 +1,21 @@
 use clap::Parser;
 use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
+    event::{
+        DisableMouseCapture, EnableMouseCapture, Event, EventStream, KeyCode, KeyEvent,
+        KeyModifiers,
+    },
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
+use futures::StreamExt;
 use ratatui::{Terminal, backend::CrosstermBackend};
 use std::io;
 use std::net::ToSocketAddrs;
-use std::time::Duration;
+use tokio::sync::mpsc;
 
-use irc_client::client::event::Event as IrcEvent;
 use irc_client::client::{Client, Config};
 use irc_client::proto::message::{Command, IrcMessage};
+use irc_client::{client::event::Event as IrcEvent, connection::Sender};
 use tui::app::AppState;
 use tui::ui;
 mod tui;
@@ -33,6 +37,11 @@ struct Args {
 
     #[arg(short, long, default_value_t = String::new())]
     pass: String,
+}
+
+enum AppEvent {
+    Key(KeyEvent),
+    Irc(IrcEvent),
 }
 
 #[tokio::main]
@@ -82,26 +91,59 @@ async fn run(
     };
 
     let mut client = Client::connect(config).await?;
+    let sender = client.sender();
 
+    let (tx, mut rx) = mpsc::unbounded_channel::<AppEvent>();
+    // Spawn keyboard task — blocks on crossterm's async read,
+    // zero CPU until a key is actually pressed
+
+    let kb_tx = tx.clone();
+    tokio::spawn(async move {
+        loop {
+            // event::EventStream is crossterm's async Stream adapter
+            match EventStream::new().next().await {
+                Some(Ok(Event::Key(key))) => {
+                    if kb_tx.send(AppEvent::Key(key)).is_err() {
+                        break;
+                    }
+                }
+                None => break,
+                _ => {}
+            }
+        }
+    });
+
+    // Spawn IRC task — awaits silently until the server sends something
+    let irc_tx = tx.clone();
+    tokio::spawn(async move {
+        while let Some(event) = client.next_event().await {
+            if irc_tx.send(AppEvent::Irc(event)).is_err() {
+                break;
+            }
+        }
+    });
+
+    // Draw once at startup
+    terminal.draw(|f| ui::draw(f, &mut app))?;
     // We poll both IRC events and keyboard events with short timeouts so
     // neither blocks the other.
-    loop {
-        terminal.draw(|f| ui::draw(f, &mut app))?;
+    // Main loop: sleeps until an event arrives, redraws only on state change
+    while let Some(event) = rx.recv().await {
+        let mut dirty = true; // set false for events that don't change visible state
 
-        if event::poll(Duration::from_millis(20))? {
-            if let Event::Key(key) = event::read()? {
+        match event {
+            AppEvent::Key(key) => {
                 match (key.modifiers, key.code) {
                     (KeyModifiers::CONTROL, KeyCode::Char('c')) => break,
-
                     (_, KeyCode::Enter) => {
                         let text = app.take_input();
                         if !text.is_empty() {
-                            if handle_input(&text, &mut app, &mut client) {
+                            // need client here — see note below about Arc<Mutex<Client>>
+                            if handle_input(&text, &mut app, &sender) {
                                 break;
-                            };
+                            }
                         }
                     }
-
                     (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char(c)) => {
                         app.input_insert(c);
                     }
@@ -114,16 +156,23 @@ async fn run(
                     (_, KeyCode::Down) => app.scroll_down(),
                     (_, KeyCode::Home) => app.cursor = 0,
                     (_, KeyCode::End) => app.cursor = app.input.len(),
+                    _ => {
+                        dirty = false;
+                    }
+                }
+            }
+
+            AppEvent::Irc(irc_event) => {
+                match &irc_event {
+                    IrcEvent::Raw(_) => dirty = false,
                     _ => {}
                 }
+                handle_irc_event(irc_event, &mut app);
             }
         }
 
-        for _ in 0..16 {
-            match client.next_event_nowait() {
-                Some(irc_event) => handle_irc_event(irc_event, &mut app),
-                None => break,
-            }
+        if dirty {
+            terminal.draw(|f| ui::draw(f, &mut app))?;
         }
     }
 
@@ -131,7 +180,7 @@ async fn run(
 }
 
 /// Handle a line entered in the input box.
-fn handle_input(text: &str, app: &mut AppState, client: &mut Client) -> bool {
+fn handle_input(text: &str, app: &mut AppState, sender: &Sender) -> bool {
     if let Some(cmd) = text.strip_prefix('/') {
         // It's a command
         let mut parts = cmd.splitn(2, ' ');
@@ -141,11 +190,11 @@ fn handle_input(text: &str, app: &mut AppState, client: &mut Client) -> bool {
         match verb.as_str() {
             "JOIN" => {
                 if !app.channel.is_empty() {
-                    client.part(&app.channel, None);
+                    sender.part(&app.channel, None);
                 }
                 app.messages.clear();
                 app.members.clear();
-                client.join(args.trim());
+                sender.join(args.trim());
                 app.channel = args.trim().to_string();
             }
             "PART" => {
@@ -154,27 +203,27 @@ fn handle_input(text: &str, app: &mut AppState, client: &mut Client) -> bool {
                 } else {
                     args.trim()
                 };
-                client.part(channel, None);
+                sender.part(channel, None);
                 app.channel = "".to_string();
                 app.members.clear();
             }
             "NICK" => {
-                client.nick(args.trim());
+                sender.nick(args.trim());
             }
             "QUIT" => {
-                client.send(IrcMessage::new(Command::Quit, vec![args.to_string()]));
+                sender.send(IrcMessage::new(Command::Quit, vec![args.to_string()]));
                 return true;
             }
             "ME" => {
                 // CTCP ACTION
                 let ctcp = format!("\x01ACTION {}\x01", args);
-                client.privmsg(&app.channel, &ctcp);
+                sender.privmsg(&app.channel, &ctcp);
                 app.push_system(&format!("* {} {}", app.nick, args));
             }
             "MSG" => {
                 let mut p = args.splitn(2, ' ');
                 if let (Some(target), Some(msg)) = (p.next(), p.next()) {
-                    client.privmsg(target, msg);
+                    sender.privmsg(target, msg);
                     app.push_message(&format!("You →  {target}:"), &msg);
                 }
             }
@@ -185,7 +234,7 @@ fn handle_input(text: &str, app: &mut AppState, client: &mut Client) -> bool {
     } else {
         if app.connected && !app.channel.is_empty() {
             // Regular chat message to active channel
-            client.privmsg(&app.channel, text);
+            sender.privmsg(&app.channel, text);
             app.push_message(&app.nick.clone(), text);
         }
     }
