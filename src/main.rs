@@ -9,6 +9,7 @@ use crossterm::{
 };
 use futures::StreamExt;
 use ratatui::{Terminal, backend::CrosstermBackend};
+use scanpw::scanpw;
 use std::io;
 use std::net::ToSocketAddrs;
 use tokio::sync::mpsc;
@@ -34,9 +35,6 @@ struct Args {
 
     #[arg(short, long, default_value_t = String::from("speakez"))]
     realname: String,
-
-    #[arg(short, long, default_value_t = String::new())]
-    pass: String,
 }
 
 enum AppEvent {
@@ -46,6 +44,8 @@ enum AppEvent {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let password = scanpw!("Password (leave blank for no pass): ");
+
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
@@ -53,7 +53,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut terminal = Terminal::new(backend)?;
     terminal.clear()?;
 
-    let result = run(&mut terminal).await;
+    let result = run(&mut terminal, password).await;
 
     disable_raw_mode()?;
     execute!(
@@ -68,6 +68,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 async fn run(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+    password: String,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut app = AppState::new();
 
@@ -76,9 +77,9 @@ async fn run(
         return Err("Error: could not resolve server".into());
     }
 
-    let password = match args.pass.as_str() {
+    let password = match password.as_str() {
         "" => None,
-        _ => Some(args.pass),
+        _ => Some(password),
     };
 
     // Connect to IRC
