@@ -4,7 +4,10 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
-    widgets::{Block, BorderType, Borders, List, ListItem, Paragraph, Wrap},
+    widgets::{
+        Block, BorderType, Borders, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation,
+        Wrap,
+    },
 };
 use unicode_width::UnicodeWidthStr;
 
@@ -113,8 +116,8 @@ fn draw_chat_log(f: &mut Frame, area: Rect, state: &mut AppState) {
     let max_offset = base_scroll as usize;
 
     // Clamp the offset and write it back so app.rs stays in sync
-    state.scroll_offset = state.scroll_offset.clamp(0, max_offset);
-    let final_scroll = (base_scroll as i32 - state.scroll_offset as i32) as u16;
+    state.chat_scroll = state.chat_scroll.clamp(0, max_offset);
+    let final_scroll = (base_scroll as i32 - state.chat_scroll as i32) as u16;
 
     f.render_widget(
         Paragraph::new(Text::from(padded_lines))
@@ -246,7 +249,7 @@ fn draw_input(f: &mut Frame, area: Rect, state: &AppState) {
     );
 }
 
-fn draw_members_panel(f: &mut Frame, area: Rect, state: &AppState) {
+fn draw_members_panel(f: &mut Frame, area: Rect, state: &mut AppState) {
     let items: Vec<ListItem> = state
         .members
         .iter()
@@ -281,7 +284,18 @@ fn draw_members_panel(f: &mut Frame, area: Rect, state: &AppState) {
     let title = format!(" users ({}) ", state.members.len());
     let block = panel_block(&title);
 
-    f.render_widget(List::new(items).block(block), area);
+    state.members_scroll = state.members_scroll.content_length(state.members.len());
+
+    f.render_stateful_widget(
+        List::new(items).block(block),
+        area,
+        &mut state.members_list_state,
+    );
+    f.render_stateful_widget(
+        Scrollbar::new(ScrollbarOrientation::VerticalRight),
+        area,
+        &mut state.members_scroll,
+    );
 }
 
 fn draw_statusbar(f: &mut Frame, area: Rect, state: &AppState) {

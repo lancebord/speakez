@@ -105,6 +105,8 @@ async fn run(
                     (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char(c)) => {
                         app.input_insert(c);
                     }
+                    (KeyModifiers::SHIFT, KeyCode::Up) => app.members_scroll_up(),
+                    (KeyModifiers::SHIFT, KeyCode::Down) => app.members_scroll_down(),
                     (_, KeyCode::Backspace) => app.input_backspace(),
                     (_, KeyCode::Left) => app.cursor_left(),
                     (_, KeyCode::Right) => app.cursor_right(),

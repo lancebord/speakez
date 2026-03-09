@@ -1,3 +1,5 @@
+use ratatui::widgets::{ListState, ScrollbarState};
+
 /// A single chat message in the log
 #[derive(Clone)]
 pub struct ChatLine {
@@ -15,7 +17,9 @@ pub struct AppState {
     pub members: Vec<String>,
     pub input: String,
     pub cursor: usize,
-    pub scroll_offset: usize,
+    pub chat_scroll: usize,
+    pub members_scroll: ScrollbarState,
+    pub members_list_state: ListState,
     pub status: String,
     pub connected: bool,
 }
@@ -29,7 +33,9 @@ impl AppState {
             members: Vec::new(),
             input: String::new(),
             cursor: 0,
-            scroll_offset: 0,
+            chat_scroll: 0,
+            members_scroll: ScrollbarState::new(0),
+            members_list_state: ListState::default(),
             status: "Set nick with /nick to connect.".into(),
             connected: false,
         }
@@ -88,11 +94,24 @@ impl AppState {
     }
 
     pub fn scroll_up(&mut self) {
-        self.scroll_offset += 1;
+        self.chat_scroll = self.chat_scroll.saturating_add(1);
     }
 
     pub fn scroll_down(&mut self) {
-        self.scroll_offset = self.scroll_offset.saturating_sub(1);
+        self.chat_scroll = self.chat_scroll.saturating_sub(1);
+    }
+
+    pub fn members_scroll_up(&mut self) {
+        let pos = self.members_scroll.get_position().saturating_sub(5);
+        self.members_scroll = self.members_scroll.position(pos);
+        *self.members_list_state.offset_mut() = pos;
+    }
+
+    pub fn members_scroll_down(&mut self) {
+        let max = self.members.len().saturating_sub(1);
+        let pos = (self.members_scroll.get_position().saturating_add(5)).min(max);
+        self.members_scroll = self.members_scroll.position(pos);
+        *self.members_list_state.offset_mut() = pos;
     }
 
     pub fn take_input(&mut self) -> String {
