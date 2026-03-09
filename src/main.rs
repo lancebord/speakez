@@ -40,6 +40,7 @@ struct Args {
 enum AppEvent {
     Key(KeyEvent),
     Irc(IrcEvent),
+    Resize,
 }
 
 #[tokio::main]
@@ -108,6 +109,11 @@ async fn run(
                         break;
                     }
                 }
+                Some(Ok(Event::Resize(_, _))) => {
+                    if kb_tx.send(AppEvent::Resize).is_err() {
+                        break;
+                    }
+                }
                 None => break,
                 _ => {}
             }
@@ -130,7 +136,7 @@ async fn run(
     // neither blocks the other.
     // Main loop: sleeps until an event arrives, redraws only on state change
     while let Some(event) = rx.recv().await {
-        let mut dirty = true; // set false for events that don't change visible state
+        let mut dirty = true;
 
         match event {
             AppEvent::Key(key) => {
@@ -170,6 +176,8 @@ async fn run(
                 }
                 handle_irc_event(irc_event, &mut app);
             }
+
+            AppEvent::Resize => {} // just needs to be handled so dirty is true
         }
 
         if dirty {
