@@ -129,6 +129,7 @@ fn count_wrapped_lines(lines: &[Line], width: usize) -> usize {
     if width == 0 {
         return lines.len();
     }
+
     lines
         .iter()
         .map(|line| {
@@ -146,13 +147,20 @@ fn count_wrapped_lines(lines: &[Line], width: usize) -> usize {
             let mut current_width = 0;
 
             for word in full_text.split_inclusive(' ') {
-                let word_width = UnicodeWidthStr::width(word);
-                if current_width > 0 && current_width + word_width > width {
-                    row_count += 1;
-                    current_width = word_width;
-                } else {
+                let mut word_width = UnicodeWidthStr::width(word);
+                if current_width + word_width <= width {
                     current_width += word_width;
+                    continue;
                 }
+
+                row_count += 1;
+
+                if word_width >= width {
+                    row_count += word_width / width;
+                    word_width %= width;
+                }
+
+                current_width = word_width;
             }
             row_count
         })
