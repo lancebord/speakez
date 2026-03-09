@@ -51,38 +51,9 @@ impl Client {
         Ok(client)
     }
 
-    /// Send a raw `IrcMessage` to the server.
-    pub fn send(&self, msg: IrcMessage) {
-        self.sender.send(msg);
-    }
-
-    /// Send a PRIVMSG to a channel or user.
-    pub fn privmsg(&self, target: &str, text: &str) {
-        self.sender.send(IrcMessage::new(
-            Command::Privmsg,
-            vec![target.to_string(), text.to_string()],
-        ));
-    }
-
-    /// Join a channel.
-    pub fn join(&self, channel: &str) {
-        self.sender
-            .send(IrcMessage::new(Command::Join, vec![channel.to_string()]));
-    }
-
-    /// Part a channel.
-    pub fn part(&self, channel: &str, reason: Option<&str>) {
-        let mut params = vec![channel.to_string()];
-        if let Some(r) = reason {
-            params.push(r.to_string());
-        }
-        self.sender.send(IrcMessage::new(Command::Part, params));
-    }
-
-    /// Change nick.
-    pub fn nick(&self, new_nick: &str) {
-        self.sender
-            .send(IrcMessage::new(Command::Nick, vec![new_nick.to_string()]));
+    /// Offer a clone of the sender
+    pub fn sender(&self) -> Sender {
+        self.sender.clone()
     }
 
     /// Read-only view of current client state.
@@ -135,21 +106,5 @@ impl Client {
                 self.config.realname.clone(),
             ],
         ));
-    }
-}
-
-impl Client {
-    /// Non-blocking version of `next_event`.
-    /// Returns `Some(event)` if one is immediately available, `None` otherwise.
-    /// Used by the TUI loop to drain events without blocking the render tick.
-    pub fn next_event_nowait(&mut self) -> Option<Event> {
-        loop {
-            let msg = self.inbox.try_recv().ok()?;
-            let mut events = handle(msg, &mut self.state, &self.sender);
-
-            if !events.is_empty() {
-                return Some(events.remove(0));
-            }
-        }
     }
 }

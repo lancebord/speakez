@@ -20,7 +20,7 @@ thiserror = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 ratatui = "0.30"
-crossterm = "0.28"
+crossterm = { version = "0.28", features = ["event-stream"] }
 unicode-width = "0.2.2"
 clap = { version = "4.5.60", features = ["derive"] }
 

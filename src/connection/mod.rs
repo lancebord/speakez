@@ -5,7 +5,7 @@ use tokio_util::codec::Framed;
 use tracing::{debug, error, info};
 
 use crate::proto::codec::IrcCodec;
-use crate::proto::message::IrcMessage;
+use crate::proto::message::{Command, IrcMessage};
 
 /// A handle to send messages to the server.
 /// Cheaply cloneable — pass it wherever you need to write.
@@ -15,9 +15,37 @@ pub struct Sender {
 }
 
 impl Sender {
+    /// Send a raw `IrcMessage` to the server.
     pub fn send(&self, msg: IrcMessage) {
         // Only fails if the connection task has shut down
         let _ = self.tx.send(msg);
+    }
+
+    /// Send a PRIVMSG to a channel or user.
+    pub fn privmsg(&self, target: &str, text: &str) {
+        self.send(IrcMessage::new(
+            Command::Privmsg,
+            vec![target.to_string(), text.to_string()],
+        ));
+    }
+
+    /// Join a channel.
+    pub fn join(&self, channel: &str) {
+        self.send(IrcMessage::new(Command::Join, vec![channel.to_string()]));
+    }
+
+    /// Part a channel.
+    pub fn part(&self, channel: &str, reason: Option<&str>) {
+        let mut params = vec![channel.to_string()];
+        if let Some(r) = reason {
+            params.push(r.to_string());
+        }
+        self.send(IrcMessage::new(Command::Part, params));
+    }
+
+    /// Change nick.
+    pub fn nick(&self, new_nick: &str) {
+        self.send(IrcMessage::new(Command::Nick, vec![new_nick.to_string()]));
     }
 }
 
