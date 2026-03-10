@@ -17,20 +17,13 @@ pub enum Event {
     SysMessage { text: String },
 
     /// We joined a channel
-    Joined { channel: String, nick: String },
+    Joined { nick: String },
 
     /// We or someone else left a channel
-    Parted {
-        channel: String,
-        nick: String,
-        reason: Option<String>,
-    },
+    Parted { nick: String },
 
     /// Someone quit the server
-    Quit {
-        nick: String,
-        reason: Option<String>,
-    },
+    Quit { nick: String },
 
     /// A nick change (could be ours)
     NickChanged { old_nick: String, new_nick: String },

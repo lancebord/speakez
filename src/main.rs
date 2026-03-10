@@ -96,9 +96,9 @@ async fn run(
     let sender = client.sender();
 
     let (tx, mut rx) = mpsc::unbounded_channel::<AppEvent>();
+
     // Spawn keyboard task — blocks on crossterm's async read,
     // zero CPU until a key is actually pressed
-
     let kb_tx = tx.clone();
     tokio::spawn(async move {
         loop {
@@ -260,11 +260,11 @@ fn handle_irc_event(event: IrcEvent, app: &mut AppState) {
             app.push_system(&format!("Connected to {} as {}", server, nick));
         }
 
-        IrcEvent::Joined { channel, nick } => {
+        IrcEvent::Joined { nick } => {
             if nick == app.nick {
-                app.push_system(&format!("You joined {}", channel));
+                app.push_join_leave(&format!("+{}", nick));
             } else {
-                app.push_system(&format!("{} joined {}", nick, channel));
+                app.push_join_leave(&format!("+{}", nick));
                 app.members.push(nick);
                 app.sort_members();
             }
@@ -292,33 +292,20 @@ fn handle_irc_event(event: IrcEvent, app: &mut AppState) {
             app.push_system(text.as_str());
         }
 
-        IrcEvent::Parted {
-            channel,
-            nick,
-            reason,
-        } => {
+        IrcEvent::Parted { nick } => {
             app.members.retain(|m| {
                 let bare = m.trim_start_matches(&['@', '+', '%'][..]);
                 bare != nick
             });
-            app.push_system(&format!(
-                "{} left {}{}",
-                nick,
-                channel,
-                reason.map(|r| format!(" ({})", r)).unwrap_or_default()
-            ));
+            app.push_join_leave(&format!("-{}", nick,));
         }
 
-        IrcEvent::Quit { nick, reason } => {
+        IrcEvent::Quit { nick } => {
             app.members.retain(|m| {
                 let bare = m.trim_start_matches(&['@', '+', '%'][..]);
                 bare != nick
             });
-            app.push_system(&format!(
-                "{} quit{}",
-                nick,
-                reason.map(|r| format!(" ({})", r)).unwrap_or_default()
-            ));
+            app.push_join_leave(&format!("-{}", nick,));
         }
 
         IrcEvent::NickChanged { old_nick, new_nick } => {

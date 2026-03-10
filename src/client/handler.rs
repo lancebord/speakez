@@ -90,40 +90,28 @@ pub fn handle(msg: IrcMessage, state: &mut ClientState, sender: &Sender) -> Vec<
 
         Command::Join => {
             let nick = nick_from_prefix(&msg.prefix);
-            if let Some(channel) = msg.params.first() {
-                events.push(Event::Joined {
-                    channel: channel.clone(),
-                    nick: nick.clone(),
-                });
-                if nick != state.nick {
-                    state.channel.members.insert(nick);
-                }
+            events.push(Event::Joined { nick: nick.clone() });
+            if nick != state.nick {
+                state.channel.members.insert(nick);
             }
         }
 
         Command::Part => {
             let nick = nick_from_prefix(&msg.prefix);
-            let channel = msg.params.first().cloned().unwrap_or_default();
-            let reason = msg.params.get(1).cloned();
 
             if nick != state.nick {
                 state.channel.members.remove(&nick);
             }
 
-            events.push(Event::Parted {
-                channel,
-                nick,
-                reason,
-            });
+            events.push(Event::Parted { nick });
         }
 
         Command::Quit => {
             let nick = nick_from_prefix(&msg.prefix);
-            let reason = msg.params.first().cloned();
 
             state.channel.members.remove(&nick);
 
-            events.push(Event::Quit { nick, reason });
+            events.push(Event::Quit { nick });
         }
 
         Command::Nick => {

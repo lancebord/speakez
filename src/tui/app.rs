@@ -6,6 +6,7 @@ pub struct ChatLine {
     pub nick: String,
     pub text: String,
     pub is_system: bool,
+    pub is_join_leave: bool,
     pub is_notice: bool,
 }
 
@@ -46,6 +47,7 @@ impl AppState {
             nick: nick.to_string(),
             text: text.to_string(),
             is_system: false,
+            is_join_leave: false,
             is_notice: false,
         });
     }
@@ -55,6 +57,24 @@ impl AppState {
             nick: String::new(),
             text: text.to_string(),
             is_system: true,
+            is_join_leave: false,
+            is_notice: false,
+        });
+    }
+
+    pub fn push_join_leave(&mut self, text: &str) {
+        if let Some(m) = self.messages.last_mut() {
+            if m.is_join_leave {
+                m.text += format!(" {text}").as_str();
+                return;
+            }
+        }
+
+        self.messages.push(ChatLine {
+            nick: String::new(),
+            text: text.to_string(),
+            is_system: true,
+            is_join_leave: true,
             is_notice: false,
         });
     }
