@@ -32,7 +32,9 @@ cargo install --path .
 speakez -s <server_addr>:<port> -n <nick>
 ```
 
-You can optionally set username, realname, and password with `-u`, `-r`, and `-p` respectively.
+You can optionally set username and realname with `-u` and `-r` respectively.
+
+You will be prompted for a password upon starting the application, if you don't have one just leave it blank.
 
 Once connected join a channel with `/join #<channel>`
 
